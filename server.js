@@ -1,9 +1,7 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { buildRenderContext } from './src/lib/render-context-factory.js';
-import { runWithContext } from './src/lib/render-context.js';
 import { renderPage } from './src/lib/render-page.js';
 import { HTTP_METHODS } from './src/lib/constants.js';
 import { ViteRouter } from './src/core/router/router.js';
@@ -87,7 +85,7 @@ async function bootstrap() {
   //
   // This replaces app.use('*all', ...) which is Express 5 syntax and
   // silently never fires under Express 4.
-  app.use(createSsrHandler(router, renderCtx, vite));
+  app.use(createSsrHandler(router, renderCtx));
 
   // ── 7. Centralised error handler ─────────────────────────────────────────────
   //
@@ -139,10 +137,9 @@ async function mountStaticMiddleware(app) {
  *
  * @param {ViteRouter}     router
  * @param {RenderContext}  renderCtx
- * @param {import('vite').ViteDevServer | null} vite
  * @returns {import('express').RequestHandler}
  */
-function createSsrHandler(router, renderCtx, vite) {
+function createSsrHandler(router, renderCtx) {
   return async (req, res, next) => {
     // req.path is the pathname without query string, already decoded by Express.
     // We use this for router matching (not req.originalUrl which may contain
@@ -312,7 +309,6 @@ async function renderSpaShell(res, url, renderCtx) {
  * @returns {import('express').ErrorRequestHandler}
  */
 function createErrorHandler(vite) {
-  // eslint-disable-next-line no-unused-vars
   return async (err, req, res, _next) => {
     // In development, rewrite stack frames to point at source files.
     // Only called once — the original called vite?.ssrFixStacktrace AND

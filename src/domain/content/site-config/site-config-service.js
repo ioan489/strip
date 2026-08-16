@@ -1,5 +1,4 @@
 import { createSiteConfig } from './site-config.js';
-import { ContentError, ContentErrorCode } from '../errors/index.js';
 
 /**
  * Loads site configuration from a raw module.

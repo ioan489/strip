@@ -6,7 +6,6 @@
 // before the getServerData fix.
 
 import { describe, it, expect } from 'vitest';
-import { buildContentContainer } from '../../content/bootstrap/container.js';
 import { createSourceBackedRepository } from '../../domain/content/repositories/create-source-backed-repository.js';
 import { createLocalModuleSource } from '../../content/sources/create-local-module-source.js';
 import { createPageFactory } from '../../domain/content/factories/index.js';

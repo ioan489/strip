@@ -7,7 +7,6 @@ import { createRepositories } from './create-repositories.js';
 import { createServices } from './create-services.js';
 import { createContentApi } from './create-content-api.js';
 import { createRenderBlock } from '../renderers/render-block.js';
-import { createAppLogger } from '../../lib/logger/create-logger.js';
 
 import navManifest from '../nav-manifest.js';
 import siteConfigModule from '../site-config.js';

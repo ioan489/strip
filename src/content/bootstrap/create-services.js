@@ -1,8 +1,6 @@
 import { createNavigationService } from '../../domain/content/navigation/navigation-service.js';
 import { createSiteConfig } from '../../domain/content/site-config/site-config.js';
 
-import { isPreview } from '../../lib/preview-context.js';
-
 /**
  * Creates content-level application services.
  *

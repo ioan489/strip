@@ -1,4 +1,3 @@
-import { deepFreeze } from '../../lib/deep-freeze.js';
 import { ContentError, ContentErrorCode } from '../../domain/content/index.js';
 import { isBlockRenderer } from './block-renderer.js';
 

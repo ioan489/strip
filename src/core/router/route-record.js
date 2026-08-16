@@ -90,7 +90,7 @@ export function fromFilePath(filePath, loader, options = {}) {
   try {
     allSegments = rawSegments.map((seg) => parseSegment(seg, filePath));
   } catch (err) {
-    throw new Error(`fromFilePath ("${filePath}"): ${err.message}`);
+    throw new Error(`fromFilePath ("${filePath}"): ${err.message}`, { cause: err });
   }
 
   // URL-visible segments — route groups have no URL representation

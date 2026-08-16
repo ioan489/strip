@@ -29,7 +29,7 @@ import { content, renderBlock } from '../content/runtime.js';
 // Receives { req, params } — return anything the page template needs.
 // Equivalent to Next.js getServerSideProps.
 
-export async function getServerData({ req, params }) {
+export async function getServerData() {
   const page = await content.page('payments');
   return { page };
 }
@@ -42,7 +42,7 @@ export async function getServerData({ req, params }) {
  * @param {{ params: Record<string,string>; serverData: Awaited<ReturnType<typeof getServerData>> }} props
  * @returns {import('../layouts/_layout.js').LayoutResult}
  */
-export default async function HomePage({ params, serverData }) {
+export default async function HomePage({ serverData }) {
   const { page } = serverData;
 
   return Layout({

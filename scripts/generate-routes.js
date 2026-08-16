@@ -96,7 +96,7 @@ async function main(opts) {
 
   // ── 1. Discover page files ──────────────────────────────────────────────────
   const absPagesDir = path.resolve(ROOT, opts.pagesDir);
-  const filePaths = await discoverPageFiles(absPagesDir, opts.pagesDir);
+  const filePaths = await discoverPageFiles(absPagesDir);
 
   if (filePaths.length === 0) {
     throw new Error(
@@ -176,17 +176,16 @@ async function main(opts) {
  * results) was only added in Node 20.1. This implementation works on Node 18+.
  *
  * @param {string} absPagesDir  - Absolute filesystem path to the pages directory
- * @param {string} relPagesDir  - Relative path from root, e.g. "src/pages"
  * @returns {Promise<string[]>} - Vite-style paths, sorted alphabetically
  */
-async function discoverPageFiles(absPagesDir, relPagesDir) {
+async function discoverPageFiles(absPagesDir) {
   const results = [];
 
   try {
     await walk(absPagesDir, results);
   } catch (err) {
     if (err.code === 'ENOENT') {
-      throw new Error(`Pages directory not found: "${absPagesDir}"`);
+      throw new Error(`Pages directory not found: "${absPagesDir}"`, { cause: err });
     }
     throw err;
   }
