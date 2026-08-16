@@ -1,0 +1,26 @@
+{
+  // Recommended extensions for this project.
+  // VSCode prompts every developer who opens the repo to install these.
+
+  "recommendations": [
+    // ── HTML in tagged templates ───────────────────────────────────────────
+    // Provides syntax highlighting, autocomplete, and Emmet for HTML inside
+    // tagged template literals named `html`. Works automatically with our
+    // html`` tag in src/lib/html.js — no extra configuration required.
+    "bierner.lit-html",
+
+    // ── Formatting ────────────────────────────────────────────────────────
+    // Formats JS, CSS, JSON, and Markdown consistently across the team.
+    "esbenp.prettier-vscode",
+
+    // ── Linting ───────────────────────────────────────────────────────────
+    "dbaeumer.vscode-eslint",
+
+    // ── CSS ───────────────────────────────────────────────────────────────
+    // IntelliSense for CSS custom properties, class names, and Vite aliases.
+    "bradlc.vscode-tailwindcss",
+
+    // ── Git ───────────────────────────────────────────────────────────────
+    "eamodio.gitlens"
+  ]
+}

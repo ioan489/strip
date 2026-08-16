@@ -1,0 +1,69 @@
+# ── Build output ──────────────────────────────────────────────────────────────
+
+# Never commit generated files. dist/ is recreated by `npm run build`.
+
+dist/
+
+# ── Dependencies ───────────────────────────────────────────────────────────────
+
+node_modules/
+
+# ── Environment variables ──────────────────────────────────────────────────────
+
+# .env contains secrets (API keys, DB URLs). Never commit it.
+
+# Commit .env.example with placeholder values instead.
+
+.env
+.env.local
+.env.\*.local
+
+# ── Vercel ────────────────────────────────────────────────────────────────────
+
+# .vercel/ contains project-specific metadata (org ID, project ID) that is
+
+# linked to your Vercel account. It should be committed if you want everyone
+
+# on the team to deploy to the same project without re-running `vercel link`.
+
+.vercel/
+
+# ── Vite ──────────────────────────────────────────────────────────────────────
+
+# Vite's local dev cache. Safe to delete; rebuilds automatically.
+
+.vite/
+
+# ── OS files ──────────────────────────────────────────────────────────────────
+
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Editor files ──────────────────────────────────────────────────────────────
+
+.idea/
+.vscode/settings.json
+_.suo
+_.swp
+_.swo
+_~
+
+# (Keep .vscode/extensions.json and .vscode/launch.json — useful to share)
+
+# ── Logs ──────────────────────────────────────────────────────────────────────
+
+_.log
+npm-debug.log_
+yarn-debug.log\*
+
+# ── Misc ──────────────────────────────────────────────────────────────────────
+
+_.tmp
+_.bak
+
+# Test artifacts
+
+test-results/
+playwright-report/
+coverage/

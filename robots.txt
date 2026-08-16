@@ -1,0 +1,10 @@
+# robots.txt
+#
+# Vite copies everything in public/ to dist/client/ automatically.
+# This file will be served at https://yourdomain.com/robots.txt
+
+User-agent: *
+Allow: /
+
+# Point search engines to your sitemap when you add one.
+# Sitemap: https://yourdomain.com/sitemap.xml
