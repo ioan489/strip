@@ -140,25 +140,33 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
       # Vite stores its transform cache in node_modules/.vite.
       # node_modules is already cached by setup-node, so Vite's cache
       # comes along for free. No separate cache step needed.
-
-      - name: Build
-        run: npm run build
+      - name: Build via Vercel
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
         env:
           NODE_ENV: production
           LOG_MIN_LEVEL: warn
-          # Expose any build-time public env vars here, e.g.:
-          # VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       # Upload dist/client as a named artifact. The name includes the git SHA
       # so you can download the exact artifact from any past workflow run.
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: dist-client-${{ github.sha }}
-          path: dist/client
+          name: vercel-output-${{ github.sha }}
+          path: .vercel/output
           # Keep artifacts for 7 days — useful for debugging a failed deploy
           # or rolling back by re-deploying an old artifact via the Actions UI.
           retention-days: 7
@@ -185,11 +193,10 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium firefox
 
-      - name: Download build artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: dist-client-${{ github.sha }}
-          path: dist/client
+      - name: Build for E2E
+        run: npm run build
+        env:
+          NODE_ENV: production
 
       - name: Run E2E tests
         run: npm run test:e2e
@@ -227,20 +234,12 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: dist-client-${{ github.sha }}
-          path: dist/client # restore to the same path build used
+          name: vercel-output-${{ github.sha }}
+          path: .vercel/output
 
       - name: Install Vercel CLI
         # Pin to a specific major version to avoid surprise breaking changes.
         run: npm install --global vercel@latest
-
-      # Pull project metadata (.vercel/) from Vercel.
-      # Pull environment variables and project settings from Vercel for the preview environment.
-      - name: Pull Vercel project settings
-        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       # Deploy the pre-built dist/client directory.
       # --prebuilt tells Vercel "the build is done, just upload these files".
@@ -290,17 +289,11 @@ jobs:
       - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
-          name: dist-client-${{ github.sha }}
-          path: dist/client
+          name: vercel-output-${{ github.sha }}
+          path: .vercel/output
 
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
-
-      - name: Pull Vercel project settings
-        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
-        env:
-          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
       # --prod promotes this deployment to the production alias (your main domain).
       - name: Deploy to Vercel (production)
