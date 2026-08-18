@@ -128,14 +128,12 @@ jobs:
     needs: [quality, test] # waits for quality, test to pass
 
     strategy:
-    # fail-fast: true is the default — if either matrix job fails,
-    # cancel the other. Correct behaviour: don't deploy if any build breaks.
-    matrix:
-      include:
-        - target: preview
-          prod_flag: ''
-        - target: production
-          prod_flag: '--prod'
+      matrix:
+        include:
+          - target: preview
+            prod_flag: ''
+          - target: production
+            prod_flag: '--prod'
 
     steps:
       - name: Checkout
