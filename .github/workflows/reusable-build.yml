@@ -1,0 +1,65 @@
+name: Reusable — Build
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: Vercel environment target (preview or production)
+        required: true
+        type: string
+      prod_flag:
+        description: Pass --prod for production builds
+        required: false
+        type: string
+        default: ''
+    # Explicit secret declarations — validated at definition time,
+    # not just at runtime. Prevents silent failures from missing secrets.
+    secrets:
+      VERCEL_TOKEN:
+        required: true
+      VERCEL_ORG_ID:
+        required: true
+      VERCEL_PROJECT_ID:
+        required: true
+
+jobs:
+  build:
+    name: Build (${{ inputs.target }})
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Vercel CLI
+        # Pinned to major version 59 — the version validated in this project.
+        # Increment deliberately when testing a new CLI release.
+        # @latest is explicitly avoided: reproducibility matters in CI.
+        run: npm install --global vercel@59
+
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=${{ inputs.target }} --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build
+        run: vercel build ${{ inputs.prod_flag }} --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          NODE_ENV: production
+          LOG_MIN_LEVEL: warn
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vercel-output-${{ inputs.target }}-${{ github.sha }}
+          path: .vercel/output
+          retention-days: 7
+          compression-level: 6
