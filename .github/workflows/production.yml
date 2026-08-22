@@ -1,0 +1,83 @@
+##############################################################################
+# Production Pipeline
+#
+# Triggered by pushes to master (i.e. when a PR is merged).
+#
+# Orchestration:
+#
+#   quality
+#      ↓
+#   test
+#    ↙   ↘
+# build  e2e     ← parallel: saves time; see note below
+#    ↘   ↙
+#   deploy-production
+#
+# Note on E2E vs build artifact:
+#   build-production and test-e2e run in parallel. Both must pass before
+#   deploy-production runs. E2E verifies application behaviour against a
+#   production-style build. It does not verify the exact .vercel/output
+#   artifact — that guarantee is provided by --prebuilt on the deploy step.
+#
+# Note on concurrency:
+#   cancel-in-progress: false — a production deploy is never cancelled
+#   mid-flight. A second push to master queues behind the first.
+##############################################################################
+
+name: Production Pipeline
+
+on:
+  push:
+    branches: [master]
+
+concurrency:
+  group: production-${{ github.ref }}
+  # Never cancel a production deploy mid-flight.
+  # A second push to master queues behind the first.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: ./.github/workflows/reusable-quality.yml
+
+  test:
+    needs: [quality]
+    uses: ./.github/workflows/reusable-test.yml
+
+  build-production:
+    needs: [quality, test]
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      target: production
+      prod_flag: '--prod'
+    secrets: inherit
+
+  test-e2e:
+    needs: [quality, test]
+    uses: ./.github/workflows/reusable-e2e.yml
+
+  deploy-production:
+    name: Deploy Production
+    runs-on: ubuntu-latest
+    needs: [build-production, test-e2e]
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vercel-output-production-${{ github.sha }}
+          path: .vercel/output
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@59
+
+      - name: Deploy to Vercel (production)
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}

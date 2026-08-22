@@ -1,0 +1,48 @@
+name: Reusable — E2E Tests
+
+on:
+  workflow_call:
+
+jobs:
+  test-e2e:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Build for E2E
+        # Uses npm run build (dist/client) rather than vercel build (.vercel/output)
+        # because Playwright's web server requires a directly serveable directory.
+        #
+        # What this verifies: application behaviour, routing, accessibility,
+        # and rendering correctness under a production-equivalent build.
+        #
+        # What this does not verify: the exact .vercel/output artifact that is
+        # deployed. That artifact is guaranteed to be the one verified by CI
+        # via the --prebuilt flag on the deploy step — this is a separate concern.
+        run: npm run build
+        env:
+          NODE_ENV: production
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+        env:
+          CI: true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ github.sha }}
+          path: playwright-report
+          retention-days: 7

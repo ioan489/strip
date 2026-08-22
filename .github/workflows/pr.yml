@@ -1,0 +1,108 @@
+##############################################################################
+# PR Pipeline
+#
+# Triggered by pull requests against master, including draft → ready conversion.
+#
+# Orchestration:
+#
+#   quality
+#      ↓
+#   test
+#    ↙   ↘
+# build  e2e     ← parallel: saves time; see note below
+#    ↘   ↙
+#   deploy-preview
+#
+# Note on E2E vs build artifact:
+#   build-preview and test-e2e run in parallel. Both must pass before
+#   deploy-preview runs. E2E verifies application behaviour against a
+#   production-style build. It does not verify the exact .vercel/output
+#   artifact — that guarantee is provided by --prebuilt on the deploy step.
+#   This is a deliberate tradeoff: parallelism over artifact identity.
+#
+# Note on fork PRs:
+#   Repository secrets are not available to workflows triggered by fork PRs
+#   (GitHub security restriction). build-preview and deploy-preview are
+#   skipped for forks. quality, test, and test-e2e still run, giving
+#   contributors full CI feedback on correctness without needing Vercel access.
+##############################################################################
+
+name: PR Pipeline
+
+on:
+  pull_request:
+    branches: [master]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    uses: ./.github/workflows/reusable-quality.yml
+
+  test:
+    needs: [quality]
+    uses: ./.github/workflows/reusable-test.yml
+
+  build-preview:
+    needs: [quality, test]
+    if: github.event.pull_request.head.repo.fork == false
+    uses: ./.github/workflows/reusable-build.yml
+    with:
+      target: preview
+    secrets: inherit
+
+  test-e2e:
+    needs: [quality, test]
+    uses: ./.github/workflows/reusable-e2e.yml
+
+  deploy-preview:
+    name: Deploy Preview
+    runs-on: ubuntu-latest
+    needs: [build-preview, test-e2e]
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.fork == false
+    environment: preview
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: vercel-output-preview-${{ github.sha }}
+          path: .vercel/output
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@59
+
+      - name: Deploy to Vercel (preview)
+        id: deploy
+        run: |
+          RAW=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --json)
+          URL=$(echo "$RAW" | jq -r '.url')
+          echo "url=$URL" >> $GITHUB_OUTPUT
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Comment preview URL on PR
+        uses: actions/github-script@v7
+        env:
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: `## 🔍 Preview Deployment\n\n**URL:** ${process.env.PREVIEW_URL}\n\n*Built from commit \`${context.sha}\`*`,
+            });
