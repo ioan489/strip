@@ -3,6 +3,6 @@
 
 # Check if package.json or package-lock.json changed
 if git diff --name-only ORIG_HEAD HEAD | grep -qE '^(package\.json|package-lock\.json)$'; then
-  echo "📦 Dependencies changed. Running npm ci..."
-  npm ci
+  echo "📦 Dependencies changed. Running npm install..."
+  npm install
 fi

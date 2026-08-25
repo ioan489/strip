@@ -3,7 +3,7 @@
 
 if [ "$1" = "rebase" ]; then
   if git diff --name-only ORIG_HEAD HEAD | grep -qE '^(package\.json|package-lock\.json)$'; then
-    echo "📦 Dependencies changed after rebase. Running npm ci..."
-    npm ci
+    echo "📦 Dependencies changed after rebase. Running npm install..."
+    npm install
   fi
 fi
