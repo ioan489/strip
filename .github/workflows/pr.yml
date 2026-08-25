@@ -8,23 +8,17 @@
 #   quality
 #      ↓
 #   test
-#    ↙   ↘
-# build  e2e     ← parallel: saves time; see note below
-#    ↘   ↙
-#   deploy-preview
+#    ↙       ↘
+# build-preview  test-e2e   ← parallel; both skipped for forks
+#    ↘       ↙
+#   deploy-preview           ← skipped for drafts and forks
 #
-# Note on E2E vs build artifact:
-#   build-preview and test-e2e run in parallel. Both must pass before
-#   deploy-preview runs. E2E verifies application behaviour against a
-#   production-style build. It does not verify the exact .vercel/output
-#   artifact — that guarantee is provided by --prebuilt on the deploy step.
-#   This is a deliberate tradeoff: parallelism over artifact identity.
+# Draft PRs: quality and test run. build-preview, test-e2e, and deploy-preview
+#   are skipped because there is no preview deployment for drafts.
 #
-# Note on fork PRs:
-#   Repository secrets are not available to workflows triggered by fork PRs
-#   (GitHub security restriction). build-preview and deploy-preview are
-#   skipped for forks. quality, test, and test-e2e still run, giving
-#   contributors full CI feedback on correctness without needing Vercel access.
+# Fork PRs: quality and test run. build-preview, test-e2e, and deploy-preview
+#   are skipped — repository secrets are unavailable to fork workflows,
+#   and build/e2e are not useful without those secrets.
 ##############################################################################
 
 name: PR Pipeline
@@ -51,7 +45,9 @@ jobs:
 
   build-preview:
     needs: [quality, test]
-    if: github.event.pull_request.head.repo.fork == false
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.fork == false
     uses: ./.github/workflows/reusable-build.yml
     with:
       target: preview
@@ -59,6 +55,9 @@ jobs:
 
   test-e2e:
     needs: [quality, test]
+    if: |
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.fork == false
     uses: ./.github/workflows/reusable-e2e.yml
 
   deploy-preview:
@@ -69,6 +68,7 @@ jobs:
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.fork == false
     environment: preview
+    timeout-minutes: 10
     permissions:
       contents: read
       pull-requests: write
@@ -78,7 +78,7 @@ jobs:
 
       - uses: actions/download-artifact@v4
         with:
-          name: vercel-output-preview-${{ github.sha }}
+          name: vercel-output-preview
           path: .vercel/output
 
       - name: Install Vercel CLI
@@ -100,9 +100,36 @@ jobs:
           PREVIEW_URL: ${{ steps.deploy.outputs.url }}
         with:
           script: |
-            github.rest.issues.createComment({
+            const body = [
+              '## 🔍 Preview Deployment',
+              '',
+              `**URL:** ${process.env.PREVIEW_URL}`,
+              '',
+              `*Built from commit \`${context.sha}\`*`,
+            ].join('\n');
+
+            const { data: comments } = await github.rest.issues.listComments({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## 🔍 Preview Deployment\n\n**URL:** ${process.env.PREVIEW_URL}\n\n*Built from commit \`${context.sha}\`*`,
             });
+
+            const existing = comments.find(
+              (c) => c.user?.type === 'Bot' && c.body?.includes('🔍 Preview Deployment'),
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                comment_id: existing.id,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body,
+              });
+            }
