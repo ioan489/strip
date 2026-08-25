@@ -7,6 +7,7 @@ jobs:
   test-e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - uses: actions/checkout@v4
@@ -18,8 +19,27 @@ jobs:
 
       - run: npm ci
 
+      - name: Get Playwright version
+        id: playwright-version
+        run: |
+          echo "version=$(npm ls @playwright/test --json | jq -r '.dependencies["@playwright/test"].version')" >> $GITHUB_OUTPUT
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        id: playwright-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ steps.playwright-version.outputs.version }}
+
+      # On cache miss: install browsers + system dependencies together
       - name: Install Playwright browsers
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: npx playwright install --with-deps chromium firefox
+
+      # On cache hit: browsers restored from cache, but system deps still needed
+      - name: Install Playwright system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium firefox
 
       - name: Build for E2E
         # Uses npm run build (dist/client) rather than vercel build (.vercel/output)
@@ -43,6 +63,14 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report-${{ github.sha }}
+          name: playwright-report-${{ github.run_id }}-${{ github.run_attempt }}
           path: playwright-report
+          retention-days: 7
+
+      # Traces and screenshots only on failure — too large to store always
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-test-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
           retention-days: 7

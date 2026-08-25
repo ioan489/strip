@@ -8,20 +8,13 @@
 #   quality
 #      ↓
 #   test
-#    ↙   ↘
-# build  e2e     ← parallel: saves time; see note below
-#    ↘   ↙
+#    ↙          ↘
+# build-production  test-e2e   ← parallel
+#    ↘          ↙
 #   deploy-production
 #
-# Note on E2E vs build artifact:
-#   build-production and test-e2e run in parallel. Both must pass before
-#   deploy-production runs. E2E verifies application behaviour against a
-#   production-style build. It does not verify the exact .vercel/output
-#   artifact — that guarantee is provided by --prebuilt on the deploy step.
-#
-# Note on concurrency:
-#   cancel-in-progress: false — a production deploy is never cancelled
-#   mid-flight. A second push to master queues behind the first.
+# cancel-in-progress: false — never cancel a production deploy mid-flight.
+# A second push to master queues behind the first.
 ##############################################################################
 
 name: Production Pipeline
@@ -29,6 +22,7 @@ name: Production Pipeline
 on:
   push:
     branches: [master]
+  workflow_dispatch:
 
 concurrency:
   group: production-${{ github.ref }}
@@ -64,13 +58,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-production, test-e2e]
     environment: production
+    timeout-minutes: 10
 
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: vercel-output-production-${{ github.sha }}
+          name: vercel-output-production
           path: .vercel/output
 
       - name: Install Vercel CLI
