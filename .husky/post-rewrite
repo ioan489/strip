@@ -1,0 +1,9 @@
+#!/bin/sh
+# .husky/post-rewrite
+
+if [ "$1" = "rebase" ]; then
+  if git diff --name-only ORIG_HEAD HEAD | grep -qE '^(package\.json|package-lock\.json)$'; then
+    echo "📦 Dependencies changed after rebase. Running npm ci..."
+    npm ci
+  fi
+fi
