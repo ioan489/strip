@@ -1,24 +1,32 @@
 ##############################################################################
 # PR Pipeline
 #
-# Triggered by pull requests against master, including draft → ready conversion.
-#
 # Orchestration:
 #
+#   changes (path filter)
 #   quality
 #      ↓
 #   test
-#    ↙       ↘
-# build-preview  test-e2e   ← parallel; both skipped for forks
-#    ↘       ↙
-#   deploy-preview           ← skipped for drafts and forks
+#    ↙          ↘
+#  build       test-e2e   ← skipped when only docs/CI files change,
+#                            when the PR is a draft, or when it comes from a fork
+#    ↘          ↙
+#  deploy-preview          ← runs only when build and test-e2e both succeed,
+#                            and only for ready, non-fork PRs
+#      ↓
+#    CI (gate)             ← single required check for branch protection
 #
-# Draft PRs: quality and test run. build-preview, test-e2e, and deploy-preview
-#   are skipped because there is no preview deployment for drafts.
+# Path filtering:
+#   build and test-e2e only run when application files change.
+#   Doc or CI-only changes skip the expensive jobs — the CI gate still passes.
 #
-# Fork PRs: quality and test run. build-preview, test-e2e, and deploy-preview
-#   are skipped — repository secrets are unavailable to fork workflows,
-#   and build/e2e are not useful without those secrets.
+# Branch protection: require only "PR Pipeline / CI".
+#   This single check passes when all jobs succeed or are legitimately skipped.
+#
+# Draft PRs:  quality and test run;
+#             build, test-e2e, and deploy-preview are skipped.
+# Fork PRs:   quality and test run;
+#             build, test-e2e, and deploy-preview are skipped (no secrets).
 ##############################################################################
 
 name: PR Pipeline
@@ -36,6 +44,30 @@ permissions:
   contents: read
 
 jobs:
+  # Detect which parts of the codebase changed.
+  # build and test-e2e depend on these outputs to decide whether to run.
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      app: ${{ steps.filter.outputs.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            app:
+              - 'src/**'
+              - 'public/**'
+              - 'e2e/**'
+              - 'package*.json'
+              - 'vite.config.*'
+              - 'vercel.json'
+              - 'playwright.config.*'
+
   quality:
     uses: ./.github/workflows/reusable-quality.yml
 
@@ -43,9 +75,10 @@ jobs:
     needs: [quality]
     uses: ./.github/workflows/reusable-test.yml
 
-  build-preview:
-    needs: [quality, test]
+  build:
+    needs: [changes, quality, test]
     if: |
+      needs.changes.outputs.app == 'true' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.fork == false
     uses: ./.github/workflows/reusable-build.yml
@@ -54,8 +87,9 @@ jobs:
     secrets: inherit
 
   test-e2e:
-    needs: [quality, test]
+    needs: [changes, quality, test]
     if: |
+      needs.changes.outputs.app == 'true' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.fork == false
     uses: ./.github/workflows/reusable-e2e.yml
@@ -63,8 +97,13 @@ jobs:
   deploy-preview:
     name: Deploy Preview
     runs-on: ubuntu-latest
-    needs: [build-preview, test-e2e]
+    needs: [build, test-e2e]
+    # always() is required because build/test-e2e may be skipped.
+    # Only deploy when both actually succeeded — not skipped, not failed.
     if: |
+      always() &&
+      needs.build.result == 'success' &&
+      needs.test-e2e.result == 'success' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.fork == false
     environment: preview
@@ -133,3 +172,94 @@ jobs:
                 body,
               });
             }
+
+  # Single required check for branch protection.
+  #
+  # Passes when all jobs succeed or are legitimately skipped (path filter).
+  # Fails when any job actually fails or is cancelled.
+  #
+  # In GitHub branch protection settings, require only: "PR Pipeline / CI"
+  # Remove any individual job checks (quality, test, build, test-e2e) —
+  # they are all covered by this gate.
+  ci-gate:
+    name: CI
+    runs-on: ubuntu-latest
+    needs: [changes, quality, test, build, test-e2e]
+    if: always()
+    timeout-minutes: 5
+
+    steps:
+      - name: Evaluate CI results
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          APP_CHANGED: ${{ needs.changes.outputs.app }}
+          DRAFT: ${{ github.event.pull_request.draft }}
+          FORK: ${{ github.event.pull_request.head.repo.fork }}
+          QUALITY: ${{ needs.quality.result }}
+          TEST: ${{ needs.test.result }}
+          BUILD: ${{ needs.build.result }}
+          E2E: ${{ needs.test-e2e.result }}
+        run: |
+          echo "changes=$CHANGES app_changed=$APP_CHANGED draft=$DRAFT fork=$FORK"
+          echo "quality=$QUALITY test=$TEST build=$BUILD e2e=$E2E"
+
+          # Verify that the changes job succeeded
+          if [[ "$CHANGES" != "success" ]]; then
+            echo "❌ Path detection job failed: $CHANGES"
+            exit 1
+          fi
+
+          # Quality and test always run — always required.
+          if [[ "$QUALITY" != "success" ]]; then
+            echo "❌ Quality check did not succeed: $QUALITY"
+            exit 1
+          fi
+
+          if [[ "$TEST" != "success" ]]; then
+            echo "❌ Tests did not succeed: $TEST"
+            exit 1
+          fi
+
+          # No application changes — build and E2E are intentionally skipped.
+          if [[ "$APP_CHANGED" != "true" ]]; then
+            if [[ "$BUILD" != "skipped" ]]; then
+              echo "❌ Build should be skipped for non-application changes, got: $BUILD"
+              exit 1
+            fi
+            if [[ "$E2E" != "skipped" ]]; then
+              echo "❌ E2E should be skipped for non-application changes, got: $E2E"
+              exit 1
+            fi
+            echo "✅ Non-application change: build and E2E correctly skipped"
+            exit 0
+          fi
+
+          # Application change on a draft or fork:
+          # build AND E2E are both skipped.
+          # build: secrets unavailable for forks; no preview needed for drafts.
+          # E2E:   same conditions as build in pr.yml — skipped for both.
+          if [[ "$DRAFT" == "true" || "$FORK" == "true" ]]; then
+            if [[ "$BUILD" != "skipped" ]]; then
+              echo "❌ Build should be skipped for draft/fork PRs, got: $BUILD"
+              exit 1
+            fi
+            if [[ "$E2E" != "skipped" ]]; then
+              echo "❌ E2E should be skipped for draft/fork PRs, got: $E2E"
+              exit 1
+            fi
+            echo "✅ Draft/fork application change: build and E2E correctly skipped"
+            exit 0
+          fi
+
+          # Application change on a ready, non-fork PR:
+          # both build and E2E must succeed.
+          if [[ "$BUILD" != "success" ]]; then
+            echo "❌ Preview build did not succeed: $BUILD"
+            exit 1
+          fi
+          if [[ "$E2E" != "success" ]]; then
+            echo "❌ E2E tests did not succeed: $E2E"
+            exit 1
+          fi
+
+          echo "✅ Full application CI passed"
