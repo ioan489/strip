@@ -9,10 +9,10 @@
 #   test
 #    ↙          ↘
 #  build       test-e2e   ← skipped when only docs/CI files change,
-#                            when the PR is a draft, or when it comes from a fork
+#                            when the PR is a draft, when it comes from a fork
 #    ↘          ↙
 #  deploy-preview          ← runs only when build and test-e2e both succeed,
-#                            and only for ready, non-fork PRs
+#                            and only for ready, non-fork, non-Dependabot PRs
 #      ↓
 #    CI (gate)             ← single required check for branch protection
 #
@@ -23,10 +23,9 @@
 # Branch protection: require only "PR Pipeline / CI".
 #   This single check passes when all jobs succeed or are legitimately skipped.
 #
-# Draft PRs:  quality and test run;
-#             build, test-e2e, and deploy-preview are skipped.
-# Fork PRs:   quality and test run;
-#             build, test-e2e, and deploy-preview are skipped (no secrets).
+# Draft PRs:      quality and test run; build, test-e2e, deploy skipped.
+# Fork PRs:       quality and test run; build, test-e2e, deploy skipped.
+# Dependabot PRs: quality, test, and test-e2e run; build and deploy skipped.
 ##############################################################################
 
 name: PR Pipeline
@@ -80,7 +79,8 @@ jobs:
     if: |
       needs.changes.outputs.app == 'true' &&
       github.event.pull_request.draft == false &&
-      github.event.pull_request.head.repo.fork == false
+      github.event.pull_request.head.repo.fork == false &&
+      github.actor != 'dependabot[bot]'
     uses: ./.github/workflows/reusable-build.yml
     with:
       target: preview
@@ -182,7 +182,7 @@ jobs:
   # Remove any individual job checks (quality, test, build, test-e2e) —
   # they are all covered by this gate.
   ci-gate:
-    name: CI
+    name: PR CI
     runs-on: ubuntu-latest
     needs: [changes, quality, test, build, test-e2e]
     if: always()
@@ -195,15 +195,16 @@ jobs:
           APP_CHANGED: ${{ needs.changes.outputs.app }}
           DRAFT: ${{ github.event.pull_request.draft }}
           FORK: ${{ github.event.pull_request.head.repo.fork }}
+          ACTOR: ${{ github.actor }}
           QUALITY: ${{ needs.quality.result }}
           TEST: ${{ needs.test.result }}
           BUILD: ${{ needs.build.result }}
           E2E: ${{ needs.test-e2e.result }}
         run: |
-          echo "changes=$CHANGES app_changed=$APP_CHANGED draft=$DRAFT fork=$FORK"
+          echo "changes=$CHANGES app_changed=$APP_CHANGED draft=$DRAFT fork=$FORK actor=$ACTOR"
           echo "quality=$QUALITY test=$TEST build=$BUILD e2e=$E2E"
 
-          # Verify that the changes job succeeded
+          # Path detection must succeed
           if [[ "$CHANGES" != "success" ]]; then
             echo "❌ Path detection job failed: $CHANGES"
             exit 1
@@ -220,46 +221,32 @@ jobs:
             exit 1
           fi
 
-          # No application changes — build and E2E are intentionally skipped.
-          if [[ "$APP_CHANGED" != "true" ]]; then
+          # Build runs only for ready, non-fork, non-Dependabot PRs with app changes.
+          # All other cases must be skipped.
+          if [[ "$APP_CHANGED" == "true" && "$DRAFT" == "false" && "$FORK" == "false" && "$ACTOR" != "dependabot[bot]" ]]; then
+            if [[ "$BUILD" != "success" ]]; then
+              echo "❌ Preview build did not succeed: $BUILD"
+              exit 1
+            fi
+          else
             if [[ "$BUILD" != "skipped" ]]; then
-              echo "❌ Build should be skipped for non-application changes, got: $BUILD"
+              echo "❌ Build should be skipped for this PR type, got: $BUILD"
               exit 1
             fi
+          fi
+
+          # E2E runs for all app changes on ready, non-fork PRs — including Dependabot.
+          # Dependabot does not need secrets; E2E catches dep-update regressions.
+          if [[ "$APP_CHANGED" == "true" && "$DRAFT" == "false" && "$FORK" == "false" ]]; then
+            if [[ "$E2E" != "success" ]]; then
+              echo "❌ E2E tests did not succeed: $E2E"
+              exit 1
+            fi
+          else
             if [[ "$E2E" != "skipped" ]]; then
-              echo "❌ E2E should be skipped for non-application changes, got: $E2E"
+              echo "❌ E2E should be skipped for this PR type, got: $E2E"
               exit 1
             fi
-            echo "✅ Non-application change: build and E2E correctly skipped"
-            exit 0
           fi
 
-          # Application change on a draft or fork:
-          # build AND E2E are both skipped.
-          # build: secrets unavailable for forks; no preview needed for drafts.
-          # E2E:   same conditions as build in pr.yml — skipped for both.
-          if [[ "$DRAFT" == "true" || "$FORK" == "true" ]]; then
-            if [[ "$BUILD" != "skipped" ]]; then
-              echo "❌ Build should be skipped for draft/fork PRs, got: $BUILD"
-              exit 1
-            fi
-            if [[ "$E2E" != "skipped" ]]; then
-              echo "❌ E2E should be skipped for draft/fork PRs, got: $E2E"
-              exit 1
-            fi
-            echo "✅ Draft/fork application change: build and E2E correctly skipped"
-            exit 0
-          fi
-
-          # Application change on a ready, non-fork PR:
-          # both build and E2E must succeed.
-          if [[ "$BUILD" != "success" ]]; then
-            echo "❌ Preview build did not succeed: $BUILD"
-            exit 1
-          fi
-          if [[ "$E2E" != "success" ]]; then
-            echo "❌ E2E tests did not succeed: $E2E"
-            exit 1
-          fi
-
-          echo "✅ Full application CI passed"
+          echo "✅ All checks passed or were legitimately skipped"
