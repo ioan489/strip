@@ -76,10 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate GitHub Actions workflows
-        uses: reviewdog/action-actionlint@v1
-        with:
-          reporter: github-check # posts check annotations, no pull-requests:write needed
-          fail_level: true
+        uses: rhysd/actionlint@v1.7.7
 
   quality:
     uses: ./.github/workflows/reusable-quality.yml
