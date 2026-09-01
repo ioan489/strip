@@ -1,22 +1,32 @@
 ##############################################################################
 # Production Pipeline
 #
-# Triggered by pushes to master (i.e., when a PR is merged) or manual dispatch.
+# Triggered by pushes to master (i.e., when a PR is merged).
 #
 # Orchestration:
 #
+#   changes (path filter)
+#        ↓
 #   quality
-#      ↓
-#   test
-#    ↙          ↘
-#  build       test-e2e   ← parallel
-#    ↘          ↙
-#  deploy-production
-#      ↓
-#    CI (gate)            ← single required check for branch protection
+#        ↓
+#      test
+#       ↙          ↘
+#    build       test-e2e   ← parallel, only when app files changed
+#       ↘          ↙
+#   deploy-production       ← only when app files changed
+#         ↓
+#     CI (gate)             ← single required check for branch protection
 #
-# cancel-in-progress: false — never cancel a production deploy mid-flight.
-# A second push to master queues behind the first.
+# Validation (quality + test) always runs — proving master is healthy
+# regardless of what changed.
+# Deployment (build + E2E + deploy) only runs when application files changed.
+#
+# Deployable paths:
+#   src/**, public/**, package*.json, vite.config.*, vercel.json
+#
+# Concurrency:
+#   Only one production workflow runs at a time.
+#   An in-progress deployment is never cancelled.
 ##############################################################################
 
 name: Production Pipeline
@@ -24,18 +34,35 @@ name: Production Pipeline
 on:
   push:
     branches: [master]
-  workflow_dispatch:
 
 concurrency:
   group: production-${{ github.ref }}
-  # Never cancel a production deploy mid-flight.
-  # A second push to master queues behind the first.
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect Changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      deploy: ${{ steps.filter.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            deploy:
+              - 'src/**'
+              - 'public/**'
+              - 'package*.json'
+              - 'vite.config.*'
+              - 'vercel.json'
+
   quality:
     uses: ./.github/workflows/reusable-quality.yml
 
@@ -45,7 +72,8 @@ jobs:
 
   build:
     name: Build
-    needs: [quality, test]
+    needs: [changes, quality, test]
+    if: needs.changes.outputs.deploy == 'true'
     uses: ./.github/workflows/reusable-build.yml
     with:
       target: production
@@ -53,15 +81,19 @@ jobs:
     secrets: inherit
 
   test-e2e:
-    needs: [quality, test]
+    needs: [changes, quality, test]
+    if: needs.changes.outputs.deploy == 'true'
     uses: ./.github/workflows/reusable-e2e.yml
 
   deploy-production:
     name: Deploy Production
     runs-on: ubuntu-latest
-    needs: [build, test-e2e]
+    needs: [changes, build, test-e2e]
     environment: production
     timeout-minutes: 10
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v4
@@ -83,26 +115,52 @@ jobs:
   ci-gate:
     name: Production CI
     runs-on: ubuntu-latest
-    needs: [quality, test, build, test-e2e, deploy-production]
+    needs: [changes, quality, test, build, test-e2e, deploy-production]
     if: always()
     timeout-minutes: 5
 
     steps:
-      - name: Evaluate production pipeline
+      - name: Evaluate pipeline results
         env:
+          CHANGES: ${{ needs.changes.result }}
+          DEPLOY: ${{ needs.changes.outputs.deploy }}
           QUALITY: ${{ needs.quality.result }}
           TEST: ${{ needs.test.result }}
           BUILD: ${{ needs.build.result }}
           E2E: ${{ needs.test-e2e.result }}
-          DEPLOY: ${{ needs.deploy-production.result }}
+          DEPLOY_RESULT: ${{ needs.deploy-production.result }}
         run: |
-          echo "quality=$QUALITY test=$TEST build=$BUILD e2e=$E2E deploy=$DEPLOY"
+          echo "changes=$CHANGES deploy=$DEPLOY"
+          echo "quality=$QUALITY test=$TEST build=$BUILD e2e=$E2E deploy_result=$DEPLOY_RESULT"
 
-          for r in "$QUALITY" "$TEST" "$BUILD" "$E2E" "$DEPLOY"; do
-            if [[ "$r" == "failure" || "$r" == "cancelled" ]]; then
-              echo "❌ Production pipeline failed or was cancelled"
+          if [[ "$CHANGES" != "success" ]]; then
+            echo "❌ Path detection failed: $CHANGES"
+            exit 1
+          fi
+
+          # Validation always runs and must always pass.
+          for r in "$QUALITY" "$TEST"; do
+            if [[ "$r" != "success" ]]; then
+              echo "❌ Validation failed: $r"
               exit 1
             fi
           done
 
-          echo "✅ Production pipeline completed successfully"
+          # Deployment stages only required for deployable changes.
+          if [[ "$DEPLOY" == "true" ]]; then
+            for r in "$BUILD" "$E2E" "$DEPLOY_RESULT"; do
+              if [[ "$r" != "success" ]]; then
+                echo "❌ Production deployment failed at stage: $r"
+                exit 1
+              fi
+            done
+            echo "✅ Production validation and deployment succeeded"
+          else
+            for r in "$BUILD" "$E2E" "$DEPLOY_RESULT"; do
+              if [[ "$r" != "skipped" ]]; then
+                echo "❌ Expected deployment stages to be skipped, got: $r"
+                exit 1
+              fi
+            done
+            echo "✅ Master is healthy — no deployable changes"
+          fi
