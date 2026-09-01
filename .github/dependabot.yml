@@ -29,6 +29,12 @@ updates:
       time: '09:00'
     open-pull-requests-limit: 5
 
+    groups:
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch
+
     commit-message:
       prefix: 'chore(ci)'
 
