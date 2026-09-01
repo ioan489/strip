@@ -3,29 +3,31 @@
 #
 # Orchestration:
 #
-#   changes (path filter)
-#   quality
-#      ↓
-#   test
-#    ↙          ↘
-#  build       test-e2e   ← skipped when only docs/CI files change,
-#                            when the PR is a draft, when it comes from a fork
-#    ↘          ↙
-#  deploy-preview          ← runs only when build and test-e2e both succeed,
-#                            and only for ready, non-fork, non-Dependabot PRs
-#      ↓
-#    CI (gate)             ← single required check for branch protection
+#   changes (path filter)   workflow-lint (always)
+#        ↓                        ↓
+#      quality ←──────────────────┘
+#         ↓
+#       test
+#       ↙          ↘
+#    build       test-e2e   ← skipped when only docs/CI files change,
+#                             when the PR is a draft, when it comes from a fork
+#       ↘          ↙
+#   deploy-preview          ← runs only when build and test-e2e both succeed,
+#                             and only for ready, non-fork, non-Dependabot PRs
+#         ↓
+#     CI (gate)             ← single required check for branch protection
 #
 # Path filtering:
 #   build and test-e2e only run when application files change.
 #   Doc or CI-only changes skip the expensive jobs — the CI gate still passes.
+#   workflow-lint, quality, and test always run regardless of changed files.
 #
 # Branch protection: require only "PR Pipeline / CI".
 #   This single check passes when all jobs succeed or are legitimately skipped.
 #
-# Draft PRs:      quality and test run; build, test-e2e, deploy skipped.
-# Fork PRs:       quality and test run; build, test-e2e, deploy skipped.
-# Dependabot PRs: quality, test, and test-e2e run; build and deploy skipped.
+# Draft PRs:      workflow-lint, quality, and test run; build, test-e2e, deploy skipped.
+# Fork PRs:       workflow-lint, quality, and test run; build, test-e2e, deploy skipped.
+# Dependabot PRs: workflow-lint, quality, test, and test-e2e run; build and deploy skipped.
 ##############################################################################
 
 name: PR Pipeline
@@ -66,6 +68,18 @@ jobs:
               - 'vite.config.*'
               - 'vercel.json'
               - 'playwright.config.*'
+
+  workflow-lint:
+    name: Workflow Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate GitHub Actions workflows
+        uses: reviewdog/action-actionlint@v1
+        with:
+          reporter: github-check # posts check annotations, no pull-requests:write needed
+          fail_level: true
 
   quality:
     uses: ./.github/workflows/reusable-quality.yml
@@ -184,7 +198,7 @@ jobs:
   ci-gate:
     name: PR CI
     runs-on: ubuntu-latest
-    needs: [changes, quality, test, build, test-e2e]
+    needs: [changes, workflow-lint, quality, test, build, test-e2e]
     if: always()
     timeout-minutes: 5
 
@@ -192,6 +206,7 @@ jobs:
       - name: Evaluate CI results
         env:
           CHANGES: ${{ needs.changes.result }}
+          WORKFLOW_LINT: ${{ needs.workflow-lint.result }}
           APP_CHANGED: ${{ needs.changes.outputs.app }}
           DRAFT: ${{ github.event.pull_request.draft }}
           FORK: ${{ github.event.pull_request.head.repo.fork }}
@@ -201,12 +216,20 @@ jobs:
           BUILD: ${{ needs.build.result }}
           E2E: ${{ needs.test-e2e.result }}
         run: |
-          echo "changes=$CHANGES app_changed=$APP_CHANGED draft=$DRAFT fork=$FORK actor=$ACTOR"
+          echo "changes=$CHANGES workflow_lint=$WORKFLOW_LINT"
+          echo "app_changed=$APP_CHANGED draft=$DRAFT fork=$FORK actor=$ACTOR"
           echo "quality=$QUALITY test=$TEST build=$BUILD e2e=$E2E"
 
           # Path detection must succeed
           if [[ "$CHANGES" != "success" ]]; then
             echo "❌ Path detection job failed: $CHANGES"
+            exit 1
+          fi
+
+          # Workflow lint always runs and must always pass —
+          # no path condition. A broken workflow file must never merge.
+          if [[ "$WORKFLOW_LINT" != "success" ]]; then
+            echo "❌ Workflow lint did not succeed: $WORKFLOW_LINT"
             exit 1
           fi
 
