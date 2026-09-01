@@ -137,7 +137,7 @@ jobs:
       - name: Deploy to Vercel (preview)
         id: deploy
         run: |
-          RAW=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} --json)
+          RAW=$(vercel deploy --prebuilt --token="${{ secrets.VERCEL_TOKEN }}" --json)
           URL=$(echo "$RAW" | jq -r '.url')
           echo "url=$URL" >> $GITHUB_OUTPUT
         env:
