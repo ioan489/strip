@@ -76,7 +76,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Validate GitHub Actions workflows
-        uses: rhysd/actionlint@v1.7.7
+        uses: rhysd/actionlint@v1.7.12
 
   quality:
     uses: ./.github/workflows/reusable-quality.yml
