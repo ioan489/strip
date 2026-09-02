@@ -1,16 +1,18 @@
-# SECURITY: This workflow uses pull_request_target, which runs with elevated
-# privileges in the base repository context. It must NEVER checkout or execute
-# code from the PR branch. This workflow is API-only: it reads PR metadata
-# and enables GitHub auto-merge. No code execution.
+##############################################################################
+# SECURITY:
+# This workflow uses pull_request_target, which runs in the base repository
+# context with write-capable permissions.
+#
+# It must NEVER checkout or execute code from the PR branch.
+# This workflow is API-only: it reads Dependabot metadata and enables
+# GitHub auto-merge.
+##############################################################################
+
 name: Dependabot Auto-merge
 
 on:
   pull_request_target:
     types: [opened, reopened, synchronize]
-
-concurrency:
-  group: dependabot-automerge-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -20,12 +22,17 @@ jobs:
   auto-merge:
     name: Auto-merge Dependabot PRs
     runs-on: ubuntu-latest
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
 
     steps:
       - name: Fetch Dependabot metadata
         id: metadata
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
+
+      - name: Show Dependabot metadata
+        run: |
+          echo "update-type=${{ steps.metadata.outputs.update-type }}"
+          echo "dependency-group=${{ steps.metadata.outputs.dependency-group }}"
 
       - name: Enable auto-merge for minor and patch updates
         if: |
