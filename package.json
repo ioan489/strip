@@ -13,7 +13,7 @@
     "build": "npm run build:client && npm run build:server && npm run build:manifest && npm run build:ssg",
     "build:verbose": "npm run build:client && npm run build:server && npm run build:manifest && node scripts/build-ssg.js --verbose",
     "build:dry": "npm run build:client && npm run build:server && npm run build:manifest && node scripts/build-ssg.js --dry-run",
-    "preview": "npx serve dist/client --listen 4173",
+    "preview": "serve dist/client --listen 4173",
     "clean": "node scripts/clean.js",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -45,6 +45,7 @@
     "globals": "^17.11.0",
     "husky": "^9.1.7",
     "lint-staged": "^17.4.1",
+    "serve": "^14.2.6",
     "vite": "^8.2.2",
     "vitest": "^4.1.10"
   }
