@@ -31,7 +31,7 @@ export default defineConfig({
   // Run against the pre-built static site.
   // `npm run build` must run before `npm run test:e2e`.
   webServer: {
-    command: 'npx serve dist/client --listen 4173',
+    command: 'serve dist/client --listen 4173',
     url: 'http://localhost:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 30_000,
