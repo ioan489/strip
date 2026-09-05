@@ -87,7 +87,7 @@ export default defineConfig(({ isSsrBuild = false }) => ({
     // This lets the SSR render function reference hashed asset filenames.
     manifest: !isSsrBuild,
 
-    rollupOptions: isSsrBuild
+    rolldownOptions: isSsrBuild
       ? {
           input: [
             // Absolute paths are required on Windows.
