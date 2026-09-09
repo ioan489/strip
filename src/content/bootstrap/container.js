@@ -12,7 +12,7 @@ import navManifest from '../nav-manifest.js';
 import siteConfigModule from '../site-config.js';
 import payments from '../pages/payments.js';
 
-export async function buildContentContainer({ logger }) {
+export async function buildContentContainer({ logger, cacheConfig }) {
   // ── Logger ─────────────────────────────────────────────────────────────────
   //
   // Created first so every subsequent bootstrap phase can log to it.
@@ -73,6 +73,7 @@ export async function buildContentContainer({ logger }) {
     pageFactory,
     pages: rawPages,
     logger: bootstrapLog,
+    cacheConfig,
   });
 
   bootstrapLog.info('Content compiled', {

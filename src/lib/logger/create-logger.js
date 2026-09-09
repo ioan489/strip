@@ -9,14 +9,11 @@ import { createConsoleLogAdapter } from './console-log-adapter.js';
  * (or any object implementing write(level, message, context)) here —
  * no other file changes.
  *
+ * @param {object} [options]
+ * @param {'debug'|'info'|'warn'|'error'} [options.minLevel='debug']
  * @returns {Logger}
  */
-export function createAppLogger() {
-  const isProd = process.env.NODE_ENV === 'production';
-
-  const adapter = createConsoleLogAdapter({
-    minLevel: process.env.LOG_MIN_LEVEL ?? (isProd ? 'info' : 'debug'),
-  });
-
+export function createAppLogger({ minLevel = 'debug' } = {}) {
+  const adapter = createConsoleLogAdapter({ minLevel });
   return createLogger(adapter, { app: 'site' });
 }
