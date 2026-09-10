@@ -177,10 +177,11 @@ export class ViteRouter {
       strictCollisions = false,
       pagesDir = '/src/pages',
       caseSensitive = true,
+      isProduction = false,
     } = options;
 
     this.vite = vite;
-    this.isProduction = process.env.NODE_ENV === 'production';
+    this.isProduction = isProduction;
     this.logger = logger;
     this.strictCollisions = strictCollisions;
     this.pagesDir = pagesDir;

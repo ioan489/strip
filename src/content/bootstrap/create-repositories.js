@@ -21,14 +21,12 @@ import { createInMemoryCache } from '../../lib/cache/create-in-memory-cache.js';
  *   previewRepository: object
  * }}
  */
-export async function createRepositories({ pageFactory, pages, logger }) {
-  const isProd = process.env.NODE_ENV === 'production';
-
+export async function createRepositories({ pageFactory, pages, logger, cacheConfig }) {
   const source = createLocalModuleSource(pages);
 
   const contentCache = createInMemoryCache({
-    maxSize: 512,
-    defaultTtl: isProd ? 0 : 5_000,
+    maxSize: cacheConfig.maxSize,
+    defaultTtl: cacheConfig.ttl,
   });
 
   const [publishedBase, previewRepository] = await Promise.all([
@@ -49,12 +47,12 @@ export async function createRepositories({ pageFactory, pages, logger }) {
   ]);
 
   const publishedRepository = createCachedContentRepository(publishedBase, contentCache, {
-    ttl: isProd ? 0 : 5_000,
+    ttl: cacheConfig.ttl,
   });
 
   logger?.debug('Content cache initialised', {
-    maxSize: 512,
-    ttl: isProd ? 'infinite' : '5s',
+    maxSize: cacheConfig.maxSize,
+    ttl: cacheConfig.ttl === 0 ? 'infinite' : `${cacheConfig.ttl}ms`,
   });
 
   return Object.freeze({ publishedRepository, previewRepository, contentCache });

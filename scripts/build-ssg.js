@@ -49,6 +49,7 @@ import { buildRenderContext } from '../src/lib/render-context-factory.js';
 import { renderPage, resolveStaticPaths, hasStaticPaths } from '../src/lib/render-page.js';
 import { ContentError, ContentErrorCode } from '../src/domain/content/errors/index.js';
 import { createAppLogger } from '../src/lib/logger/create-logger.js';
+import { createConfig } from '../src/config/create-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -111,17 +112,20 @@ async function build(opts) {
   const start = performance.now();
 
   // Must be set before buildRenderContext so it takes the production path
-  process.env.NODE_ENV = 'production';
+  const config = createConfig({ NODE_ENV: 'production' });
 
   const outDir = path.resolve(ROOT, opts.outDir);
   log(`\n📦 SSG build\n   Output → ${outDir}\n   Concurrency → ${opts.concurrency}\n`);
 
-  const ssgLogger = createAppLogger().child({ subsystem: 'ssg' });
+  const ssgLogger = createAppLogger({ minLevel: config.logging.minLevel }).child({
+    subsystem: 'ssg',
+  });
 
   // ── 1. Initialize router from the pre-built manifest ──────────────────────
   const router = new ViteRouter(null, {
     logger: ssgLogger.child({ subsystem: 'router' }),
-    pagesDir: '/src/pages',
+    pagesDir: config.server.pagesDir,
+    isProduction: config.isProd,
   });
   await router.initialize();
 

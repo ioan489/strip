@@ -8,6 +8,7 @@ import { ViteRouter } from './src/core/router/router.js';
 import { runWithPreview } from './src/lib/preview-context.js';
 import { createAppLogger } from './src/lib/logger/create-logger.js';
 import { resolveHttpStatus, isOperationalError } from './src/lib/errors/http-error-mapper.js';
+import { createConfig } from './src/config/create-config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -16,18 +17,20 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // All tunables in one frozen object. Nothing else in this file reads
 // process.env directly — makes testing and containerisation straightforward.
 
-const config = Object.freeze({
-  isProd: process.env.NODE_ENV === 'production',
-  port: Number(process.env.PORT ?? 5173),
-  host: process.env.HOST ?? 'localhost',
-  base: process.env.BASE ?? '/',
-  pagesDir: process.env.PAGES_DIR ?? '/src/pages',
-});
+const config = createConfig(process.env);
 
 // -- Logger --------------------------------------------------------------------
 
-const logger = createAppLogger();
+const logger = createAppLogger({ minLevel: config.logging.minLevel });
 const serverLog = logger.child({ subsystem: 'server' });
+
+if (config.server.pagesDir !== '/src/pages') {
+  serverLog.warn(
+    `pagesDir is "${config.server.pagesDir}" but vite-page-glob.js ` +
+      `is hardcoded to "/src/pages". Dev route discovery will fail. ` +
+      `Update the glob pattern or use the build script with --pages-dir.`,
+  );
+}
 
 // -- Entry point -------------------------------------------------------------------
 
@@ -35,6 +38,11 @@ try {
   const { server } = await bootstrap();
   setupGracefulShutdown(server);
 } catch (err) {
+  if (err.name === 'ConfigurationError') {
+    console.error(`Configuration error [${err.code}]: ${err.message}`);
+    process.exit(2);
+  }
+
   serverLog.error('Fatal: server failed to start', { error: err.message, stack: err.stack });
   process.exit(1);
 }
@@ -55,7 +63,8 @@ async function bootstrap() {
   // ── 3. File-system router ────────────────────────────────────────────────────
   const router = new ViteRouter(vite, {
     logger: logger.child({ subsystem: 'router' }),
-    pagesDir: config.pagesDir,
+    pagesDir: config.server.pagesDir,
+    isProduction: config.isProd,
   });
   await router.initialize();
   serverLog.info('Router ready', { routes: router.routes.length });
@@ -113,7 +122,7 @@ async function mountStaticMiddleware(app) {
     const vite = await createServer({
       server: { middlewareMode: true },
       appType: 'custom',
-      base: config.base,
+      base: config.server.base,
     });
     app.use(vite.middlewares);
     return vite;
@@ -125,7 +134,7 @@ async function mountStaticMiddleware(app) {
     import('sirv'),
   ]);
   app.use(compression());
-  app.use(config.base, sirv(path.join(__dirname, 'dist/client'), { extensions: [] }));
+  app.use(config.server.base, sirv(path.join(__dirname, 'dist/client'), { extensions: [] }));
   return null;
 }
 
@@ -416,9 +425,9 @@ function httpStatusMessage(status) {
 function startListening(app) {
   return new Promise((resolve, reject) => {
     app
-      .listen(config.port, config.host, () => {
+      .listen(config.server.port, config.server.host, () => {
         serverLog.info('Server listening', {
-          url: `http://${config.host}:${config.port}${config.base}`,
+          url: `http://${config.server.host}:${config.server.port}${config.server.base}`,
           mode: config.isProd ? 'production' : 'development',
         });
       })

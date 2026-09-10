@@ -5,7 +5,10 @@ import { createTestLogger } from '../../testing/helpers/create-test-logger.js';
 import { ContentError, ContentErrorCode } from '../../domain/content/errors/index.js';
 
 // One container for the whole suite — bootstrapping is the expensive part.
-const container = await buildContentContainer({ logger: createTestLogger() });
+const container = await buildContentContainer({
+  logger: createTestLogger(),
+  cacheConfig: { maxSize: 512, ttl: 0 },
+});
 
 describe('Content bootstrap — container shape', () => {
   it('exports content, navigation, siteConfig, renderBlock', () => {
